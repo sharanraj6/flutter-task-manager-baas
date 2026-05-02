@@ -27,7 +27,6 @@ class TaskManagerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
-        // Material Design Rounded Buttons
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             shape: RoundedRectangleBorder(
@@ -84,18 +83,29 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool isLogin = true;
 
   void authenticate() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) return;
+    if (email.isEmpty || password.isEmpty) {
+      showError("Please fill in all required fields.");
+      return;
+    }
+
+    if (!isLogin && password != confirmPassword) {
+      showError("Passwords do not match.");
+      return;
+    }
 
     if (isLogin) {
       final user = ParseUser(email, password, email);
       var response = await user.login();
       if (response.success) {
+        if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => TaskListScreen()));
       } else {
         showError(response.error!.message);
@@ -104,6 +114,7 @@ class _AuthScreenState extends State<AuthScreen> {
       final user = ParseUser(email, password, email);
       var response = await user.signUp();
       if (response.success) {
+        if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => TaskListScreen()));
       } else {
         showError(response.error!.message);
@@ -147,6 +158,15 @@ class _AuthScreenState extends State<AuthScreen> {
                   decoration: InputDecoration(hintText: 'Password', prefixIcon: Icon(Icons.lock)),
                   obscureText: true,
                 ),
+                // Only show Confirm Password if registering
+                if (!isLogin) ...[
+                  SizedBox(height: 16),
+                  TextField(
+                    controller: _confirmPasswordController,
+                    decoration: InputDecoration(hintText: 'Confirm Password', prefixIcon: Icon(Icons.lock_outline)),
+                    obscureText: true,
+                  ),
+                ],
                 SizedBox(height: 30),
                 ElevatedButton(
                   onPressed: authenticate,
@@ -154,10 +174,27 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 SizedBox(height: 16),
                 TextButton(
-                  onPressed: () => setState(() => isLogin = !isLogin),
-                  child: Text(
-                    isLogin ? 'Need an account? Register here' : 'Already have an account? Log in',
-                    style: TextStyle(color: Colors.white70),
+                  onPressed: () {
+                    setState(() {
+                      isLogin = !isLogin;
+                      _confirmPasswordController.clear(); // Clear field when toggling
+                    });
+                  },
+                  child: RichText(
+                    text: TextSpan(
+                      text: isLogin ? 'Need an account? ' : 'Already have an account? ',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                      children: [
+                        TextSpan(
+                          text: isLogin ? 'Register here' : 'Log in',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               ],
@@ -178,6 +215,7 @@ class TaskListScreen extends StatefulWidget {
 class _TaskListScreenState extends State<TaskListScreen> {
   List<ParseObject> tasks = [];
   bool isLoading = true;
+  String displayName = "Student";
 
   @override
   void initState() {
@@ -190,9 +228,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
     final currentUser = await ParseUser.currentUser() as ParseUser?;
     if (currentUser == null) return;
 
+    // Extract name from email (everything before the @ symbol)
+    String email = currentUser.emailAddress ?? "";
+    setState(() {
+      displayName = email.isNotEmpty ? email.split('@')[0] : "Student";
+    });
+
     QueryBuilder<ParseObject> query = QueryBuilder<ParseObject>(ParseObject('Task'))
       ..whereEqualTo('user', currentUser.toPointer())
-      ..orderByDescending('createdAt'); // Show newest tasks first
+      ..orderByDescending('createdAt'); 
 
     final response = await query.query();
     if (response.success && response.results != null) {
@@ -208,7 +252,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
-  // BOTTOM SHEET FOR CREATE / UPDATE
   void showTaskBottomSheet({ParseObject? taskToEdit}) {
     final titleController = TextEditingController(text: taskToEdit?.get<String>('title') ?? '');
     final descController = TextEditingController(text: taskToEdit?.get<String>('description') ?? '');
@@ -221,9 +264,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
         return Container(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 20,
+            left: 20, right: 20, top: 20,
           ),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -247,18 +288,31 @@ class _TaskListScreenState extends State<TaskListScreen> {
               SizedBox(height: 20),
               TextField(
                 controller: titleController,
-                decoration: InputDecoration(labelText: 'Task Title', fillColor: Colors.grey.shade100),
+                decoration: InputDecoration(hintText: 'Task Title', fillColor: Colors.grey.shade100),
               ),
               SizedBox(height: 16),
               TextField(
                 controller: descController,
-                decoration: InputDecoration(labelText: 'Description', fillColor: Colors.grey.shade100),
+                decoration: InputDecoration(hintText: 'Description', fillColor: Colors.grey.shade100),
                 maxLines: 3,
               ),
               SizedBox(height: 20),
-              SizedBox(
+              // Green Gradient Save Button
+              Container(
                 width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.greenAccent.shade400, Colors.green.shade800],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(25.0),
+                ),
                 child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                  ),
                   onPressed: () async {
                     if (titleController.text.isEmpty) return;
                     
@@ -272,10 +326,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
                     }
 
                     await task.save();
+                    if (!mounted) return;
                     Navigator.pop(context);
                     fetchTasks(); 
                   },
-                  child: Text('Save Task'),
+                  child: Text('Save Task', style: TextStyle(color: Colors.white)),
                 ),
               ),
               SizedBox(height: 20),
@@ -286,49 +341,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
   }
 
-  // DELETE TASK
   Future<void> deleteTask(ParseObject task) async {
     await task.delete();
     fetchTasks();
-  }
-
-  // LOGOUT CONFIRMATION ALERT
-  void confirmLogout() {
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) { // <-- Renamed to dialogContext
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text("Log Out"),
-          content: Text("Are you sure you want to log out of your account?"),
-          actions: [
-            TextButton(
-              child: Text("Cancel", style: TextStyle(color: Colors.grey)),
-              onPressed: () => Navigator.of(dialogContext).pop(), // Use dialogContext
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent, 
-                foregroundColor: Colors.white,
-              ),
-              child: Text("Log Out"),
-              onPressed: () async {
-                Navigator.of(dialogContext).pop(); // Close dialog first using dialogContext
-                
-                final user = await ParseUser.currentUser() as ParseUser?;
-                if (user != null) {
-                  await user.logout();
-                }
-
-                // Safely check if the screen is still active before navigating
-                if (!mounted) return; 
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => AuthScreen()));
-              },
-            ),
-          ],
-        );
-      },
-    );
   }
 
   @override
@@ -336,14 +351,29 @@ class _TaskListScreenState extends State<TaskListScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text('My Tasks', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        // Label Header on Left
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('My Tasks', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 22)),
+            Text('Hello, $displayName', style: TextStyle(color: Colors.white70, fontSize: 14)),
+          ],
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          // Profile Icon Navigation
           IconButton(
-            icon: Icon(Icons.logout, color: Colors.white),
-            onPressed: confirmLogout, // Calls the alert dialog
+            icon: Icon(Icons.person_pin, color: Colors.white, size: 30),
+            onPressed: () {
+              // Navigate to Profile Screen, passing the task count
+              Navigator.push(
+                context, 
+                MaterialPageRoute(builder: (context) => ProfileScreen(taskCount: tasks.length))
+              );
+            },
           ),
+          SizedBox(width: 8),
         ],
       ),
       body: GradientBackground(
@@ -354,7 +384,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                     child: Text('No tasks found. Tap + to add one!', 
                     style: TextStyle(color: Colors.white70, fontSize: 16)))
                 : ListView.builder(
-                    padding: EdgeInsets.only(top: 10, bottom: 80), // Padding for FAB
+                    padding: EdgeInsets.only(top: 20, bottom: 80), 
                     itemCount: tasks.length,
                     itemBuilder: (context, index) {
                       final task = tasks[index];
@@ -391,7 +421,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                               padding: const EdgeInsets.only(top: 8.0),
                               child: Text(task.get<String>('description') ?? 'No Description'),
                             ),
-                            onTap: () => showTaskBottomSheet(taskToEdit: task), // Opens bottom sheet
+                            onTap: () => showTaskBottomSheet(taskToEdit: task), 
                           ),
                         ),
                       );
@@ -404,6 +434,146 @@ class _TaskListScreenState extends State<TaskListScreen> {
         foregroundColor: Colors.deepPurple,
         icon: Icon(Icons.add),
         label: Text('New Task'),
+      ),
+    );
+  }
+}
+
+// --- PROFILE SCREEN ---
+class ProfileScreen extends StatefulWidget {
+  final int taskCount;
+
+  ProfileScreen({required this.taskCount});
+
+  @override
+  _ProfileScreenState createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  String email = "";
+  String name = "";
+
+  @override
+  void initState() {
+    super.initState();
+    loadUserData();
+  }
+
+  void loadUserData() async {
+    final user = await ParseUser.currentUser() as ParseUser?;
+    if (user != null) {
+      setState(() {
+        email = user.emailAddress ?? "Unknown Email";
+        name = email.isNotEmpty ? email.split('@')[0] : "Student";
+      });
+    }
+  }
+
+  // Safe Logout Logic
+  void confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text("Log Out"),
+          content: Text("Are you sure you want to log out of your account?"),
+          actions: [
+            TextButton(
+              child: Text("Cancel", style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.of(dialogContext).pop(), 
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent, 
+                foregroundColor: Colors.white,
+              ),
+              child: Text("Log Out"),
+              onPressed: () async {
+                Navigator.of(dialogContext).pop(); 
+                
+                final user = await ParseUser.currentUser() as ParseUser?;
+                if (user != null) {
+                  await user.logout();
+                }
+
+                if (!mounted) return; 
+                // Using pushAndRemoveUntil clears the navigation history so they can't hit "back" to see their tasks
+                Navigator.pushAndRemoveUntil(
+                  context, 
+                  MaterialPageRoute(builder: (context) => AuthScreen()),
+                  (Route<dynamic> route) => false
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: Text('My Profile', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: IconThemeData(color: Colors.white), 
+      ),
+      body: GradientBackground(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 60,
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, size: 80, color: Colors.deepPurple),
+              ),
+              SizedBox(height: 20),
+              Text(
+                name.toUpperCase(),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              SizedBox(height: 8),
+              Text(
+                email,
+                style: TextStyle(fontSize: 16, color: Colors.white70),
+              ),
+              SizedBox(height: 40),
+              Card(
+                margin: EdgeInsets.symmetric(horizontal: 40),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.assignment, color: Colors.deepPurple, size: 30),
+                      SizedBox(width: 15),
+                      Text(
+                        'Total Tasks Created: ${widget.taskCount}',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 50),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                ),
+                icon: Icon(Icons.logout, color: Colors.white),
+                label: Text('LOG OUT', style: TextStyle(color: Colors.white)),
+                onPressed: confirmLogout,
+              )
+            ],
+          ),
+        ),
       ),
     );
   }
