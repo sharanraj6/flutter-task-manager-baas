@@ -81,27 +81,34 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool isLogin = true;
 
   void authenticate() async {
+    final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
+    // Validation
     if (email.isEmpty || password.isEmpty) {
       showError("Please fill in all required fields.");
       return;
     }
-
+    if (!isLogin && username.isEmpty) {
+      showError("Please choose a username.");
+      return;
+    }
     if (!isLogin && password != confirmPassword) {
       showError("Passwords do not match.");
       return;
     }
 
     if (isLogin) {
+      // Login ONLY uses email and password
       final user = ParseUser(email, password, email);
       var response = await user.login();
       if (response.success) {
@@ -111,7 +118,11 @@ class _AuthScreenState extends State<AuthScreen> {
         showError(response.error!.message);
       }
     } else {
+      // Registration: We set the Parse core 'username' to the email to force email login,
+      // and save the custom username to a new column called 'displayName'.
       final user = ParseUser(email, password, email);
+      user.set<String>('displayName', username); 
+      
       var response = await user.signUp();
       if (response.success) {
         if (!mounted) return;
@@ -147,6 +158,16 @@ class _AuthScreenState extends State<AuthScreen> {
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 SizedBox(height: 30),
+                
+                // Only show Username field if registering
+                if (!isLogin) ...[
+                  TextField(
+                    controller: _usernameController,
+                    decoration: InputDecoration(hintText: 'Choose a Username', prefixIcon: Icon(Icons.person)),
+                  ),
+                  SizedBox(height: 16),
+                ],
+
                 TextField(
                   controller: _emailController,
                   decoration: InputDecoration(hintText: 'Student Email ID', prefixIcon: Icon(Icons.email)),
@@ -158,6 +179,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   decoration: InputDecoration(hintText: 'Password', prefixIcon: Icon(Icons.lock)),
                   obscureText: true,
                 ),
+                
                 // Only show Confirm Password if registering
                 if (!isLogin) ...[
                   SizedBox(height: 16),
@@ -167,6 +189,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     obscureText: true,
                   ),
                 ],
+
                 SizedBox(height: 30),
                 ElevatedButton(
                   onPressed: authenticate,
@@ -177,7 +200,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   onPressed: () {
                     setState(() {
                       isLogin = !isLogin;
-                      _confirmPasswordController.clear(); // Clear field when toggling
+                      _confirmPasswordController.clear(); 
+                      _usernameController.clear();
                     });
                   },
                   child: RichText(
@@ -228,10 +252,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
     final currentUser = await ParseUser.currentUser() as ParseUser?;
     if (currentUser == null) return;
 
-    // Extract name from email (everything before the @ symbol)
+    // Fetch the custom displayName, fallback to email prefix if not found
     String email = currentUser.emailAddress ?? "";
+    String fetchedName = currentUser.get<String>('displayName') ?? "";
+    
     setState(() {
-      displayName = email.isNotEmpty ? email.split('@')[0] : "Student";
+      displayName = fetchedName.isNotEmpty ? fetchedName : (email.isNotEmpty ? email.split('@')[0] : "Student");
     });
 
     QueryBuilder<ParseObject> query = QueryBuilder<ParseObject>(ParseObject('Task'))
@@ -297,7 +323,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
                 maxLines: 3,
               ),
               SizedBox(height: 20),
-              // Green Gradient Save Button
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -351,22 +376,20 @@ class _TaskListScreenState extends State<TaskListScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        // Label Header on Left
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('My Tasks', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 22)),
+            // Username displayed here
             Text('Hello, $displayName', style: TextStyle(color: Colors.white70, fontSize: 14)),
           ],
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          // Profile Icon Navigation
           IconButton(
             icon: Icon(Icons.person_pin, color: Colors.white, size: 30),
             onPressed: () {
-              // Navigate to Profile Screen, passing the task count
               Navigator.push(
                 context, 
                 MaterialPageRoute(builder: (context) => ProfileScreen(taskCount: tasks.length))
@@ -451,7 +474,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   String email = "";
-  String name = "";
+  String displayName = "";
 
   @override
   void initState() {
@@ -462,14 +485,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void loadUserData() async {
     final user = await ParseUser.currentUser() as ParseUser?;
     if (user != null) {
+      String fetchedName = user.get<String>('displayName') ?? "";
+      String fetchedEmail = user.emailAddress ?? "Unknown Email";
+      
       setState(() {
-        email = user.emailAddress ?? "Unknown Email";
-        name = email.isNotEmpty ? email.split('@')[0] : "Student";
+        email = fetchedEmail;
+        displayName = fetchedName.isNotEmpty ? fetchedName : (fetchedEmail.isNotEmpty ? fetchedEmail.split('@')[0] : "Student");
       });
     }
   }
 
-  // Safe Logout Logic
   void confirmLogout() {
     showDialog(
       context: context,
@@ -498,7 +523,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
 
                 if (!mounted) return; 
-                // Using pushAndRemoveUntil clears the navigation history so they can't hit "back" to see their tasks
                 Navigator.pushAndRemoveUntil(
                   context, 
                   MaterialPageRoute(builder: (context) => AuthScreen()),
@@ -533,11 +557,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Icon(Icons.person, size: 80, color: Colors.deepPurple),
               ),
               SizedBox(height: 20),
+              // Custom Username displayed here
               Text(
-                name.toUpperCase(),
+                displayName.toUpperCase(),
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               SizedBox(height: 8),
+              // Email remains visible as secondary text
               Text(
                 email,
                 style: TextStyle(fontSize: 16, color: Colors.white70),
