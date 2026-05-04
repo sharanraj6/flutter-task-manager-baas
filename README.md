@@ -2,6 +2,13 @@
 
 A fully functional, modern Flutter application demonstrating CRUD operations and user authentication utilizing Back4App (Parse Server) as a Backend-as-a-Service (BaaS). 
 
+## Recordings:
+* Recording 1: Registration & Login + CRUD Operations
+    Link: https://youtu.be/hxXE85SxR1k
+* Recording 2: Login + CRUD Operation
+    Link: https://youtu.be/6bRhI1d5G_A
+
+
 ## Features
 
 ###  Authentication & Profile
